@@ -1,38 +1,31 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
+import json
+import base64
+import requests
+from huggingface_hub import InferenceClient
 import streamlit as st
-
-"""
-# Welcome to Streamlit!
-
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
-
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
-
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+import plotly.express as px
 
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+API_TOKEN = st.secrets["HF"]
 
-    Point = namedtuple('Point', 'x y')
-    data = []
+picture = st.file_uploader("Take a picture")
 
-    points_per_turn = total_points / num_turns
+if picture:
+    st.image(picture)
+    client = InferenceClient(model="Salesforce/blip-image-captioning-base", token=API_TOKEN)
+    st.write(client.image_to_text(picture.getvalue()))
 
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
 
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+    headers = {f"Authorization": f"Bearer {API_TOKEN}"}
+    API_URL = "https://api-inference.huggingface.co/models/openai/clip-vit-large-patch14"
+    def query(filename, classes):
+        img = base64.b64encode(picture.getvalue())
+        data = {"image": img.decode(), "parameters": {"candidate_labels": classes}}
+        response = requests.request("POST", API_URL, headers=headers, data=json.dumps(data))
+        return json.loads(response.content.decode("utf-8"))
+
+
+    res = query(picture, "pothole, fallen tree")
+    fig = px.bar(res, y='label', x='score', orientation='h')
+    fig.update_yaxes(categoryorder='total ascending')
+    st.plotly_chart(fig)
